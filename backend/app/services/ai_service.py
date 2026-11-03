@@ -29,9 +29,25 @@ GROQ_MODEL = os.getenv(
     "openai/gpt-oss-120b"
 )
 
-# Provider timeout settings
 GEMINI_TIMEOUT_MS = 45000
 GROQ_TIMEOUT_SECONDS = 60.0
+
+
+# ==========================================
+# SAFE CONFIGURATION LOGGING
+# ==========================================
+
+logger.info(
+    "AI configuration: Gemini key=%s, model=%s",
+    "configured" if GEMINI_API_KEY else "missing",
+    GEMINI_MODEL
+)
+
+logger.info(
+    "AI configuration: Groq key=%s, model=%s",
+    "configured" if GROQ_API_KEY else "missing",
+    GROQ_MODEL
+)
 
 
 # ==========================================
@@ -69,8 +85,36 @@ if GROQ_API_KEY:
 # ==========================================
 
 class AIProviderError(Exception):
-    """Raised when all configured AI providers fail."""
     pass
+
+
+# ==========================================
+# ERROR DIAGNOSTICS
+# ==========================================
+
+def log_provider_error(provider_name, error):
+    """
+    Log useful provider error information without
+    logging API credentials.
+    """
+
+    status_code = getattr(error, "status_code", None)
+    error_code = getattr(error, "code", None)
+    message = getattr(error, "message", None)
+
+    if not message:
+        message = str(error)
+
+    message = str(message)[:500]
+
+    logger.error(
+        "%s failure | type=%s | status=%s | code=%s | message=%s",
+        provider_name,
+        type(error).__name__,
+        status_code,
+        error_code,
+        message
+    )
 
 
 # ==========================================
@@ -137,35 +181,13 @@ def generate_with_groq(prompt: str) -> str:
 # ==========================================
 
 def generate_ai_response(prompt: str) -> dict:
-    """
-    Generate an AI response using provider fallback.
-
-    Execution order:
-        1. Gemini
-        2. Groq
-
-    Gemini has a 45-second HTTP timeout.
-    Groq has a 60-second HTTP timeout.
-
-    Returns:
-        {
-            "success": True,
-            "provider": "Gemini or Groq",
-            "model": "model name",
-            "response": "generated content"
-        }
-    """
 
     if not prompt or not prompt.strip():
-        raise ValueError(
-            "Prompt cannot be empty."
-        )
+        raise ValueError("Prompt cannot be empty.")
 
-    # Stop immediately if no provider is configured.
     if not gemini_client and not groq_client:
         raise AIProviderError(
-            "No AI provider is configured. "
-            "Please configure Gemini or Groq API credentials."
+            "No AI provider is configured."
         )
 
     providers = []
@@ -184,7 +206,6 @@ def generate_ai_response(prompt: str) -> dict:
             "function": generate_with_groq
         })
 
-    # Try providers sequentially.
     for provider in providers:
 
         provider_name = provider["name"]
@@ -212,21 +233,13 @@ def generate_ai_response(prompt: str) -> dict:
 
         except Exception as error:
 
-            # Log the exception type without exposing API credentials.
+            log_provider_error(provider_name, error)
+
             logger.warning(
-                "%s request failed: %s",
-                provider_name,
-                type(error).__name__
+                "Trying the next available AI provider."
             )
 
-            logger.info(
-                "Attempting the next available AI provider."
-            )
-
-    # All configured providers failed.
-    logger.error(
-        "All configured AI providers failed."
-    )
+    logger.error("All configured AI providers failed.")
 
     raise AIProviderError(
         "All AI providers are currently unavailable. "
