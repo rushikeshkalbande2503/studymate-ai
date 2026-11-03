@@ -7,3 +7,4 @@ pymupdf
 google-genai
 pydantic
 psycopg[binary]>=3.2,<4.0
+openai>=1.0.0
