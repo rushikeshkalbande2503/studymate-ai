@@ -6,3 +6,4 @@ python-multipart
 pymupdf
 google-genai
 pydantic
+psycopg[binary]>=3.2,<4.0
